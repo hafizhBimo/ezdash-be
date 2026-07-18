@@ -43,6 +43,8 @@ class StockSnapshotRepository {
         [fn('COUNT', fn('DISTINCT', col('item_id'))), 'totalSKU'],
         [fn('SUM', col('soh_qty')), 'totalSOH'],
         [fn('SUM', col('coh_qty')), 'totalCOH'],
+        [fn('SUM', col('soh_amount')), 'totalSOHAmount'],
+        [fn('SUM', col('coh_amount')), 'totalCOHAmount'],
         [fn('SUM', literal('soh_amount + coh_amount')), 'totalValue'],
         [fn('AVG', col('days_stock')), 'avgDaysStock']
       ],
@@ -53,6 +55,8 @@ class StockSnapshotRepository {
       totalSKU: parseInt(result.totalSKU || 0, 10),
       totalSOH: parseFloat(result.totalSOH || 0),
       totalCOH: parseFloat(result.totalCOH || 0),
+      totalSOHAmount: parseFloat(result.totalSOHAmount || 0),
+      totalCOHAmount: parseFloat(result.totalCOHAmount || 0),
       totalValue: parseFloat(result.totalValue || 0),
       avgDaysStock: parseFloat(result.avgDaysStock || 0)
     };
@@ -141,23 +145,77 @@ class StockSnapshotRepository {
         attributes: []
       }],
       attributes: [
-        [fn('COUNT', literal('CASE WHEN days_stock = 0 THEN 1 END')), 'zeroStock'],
-        [fn('COUNT', literal('CASE WHEN days_stock > 0 AND days_stock < 15 THEN 1 END')), 'under15'],
-        [fn('COUNT', literal('CASE WHEN days_stock >= 15 AND days_stock <= 30 THEN 1 END')), 'range15to30'],
-        [fn('COUNT', literal('CASE WHEN days_stock > 30 AND days_stock <= 60 THEN 1 END')), 'range30to60'],
-        [fn('COUNT', literal('CASE WHEN days_stock > 60 AND days_stock <= 90 THEN 1 END')), 'range60to90'],
-        [fn('COUNT', literal('CASE WHEN days_stock > 90 THEN 1 END')), 'over90']
+        [fn('COUNT', literal('CASE WHEN days_stock > 30 THEN 1 END')), 'aman'],
+        [fn('COUNT', literal('CASE WHEN days_stock >= 15 AND days_stock <= 30 THEN 1 END')), 'warning'],
+        [fn('COUNT', literal('CASE WHEN days_stock < 15 THEN 1 END')), 'critical']
       ],
       raw: true
     });
 
     return {
-      zeroStock: parseInt(result.zeroStock || 0, 10),
-      under15: parseInt(result.under15 || 0, 10),
-      range15to30: parseInt(result.range15to30 || 0, 10),
-      range30to60: parseInt(result.range30to60 || 0, 10),
-      range60to90: parseInt(result.range60to90 || 0, 10),
-      over90: parseInt(result.over90 || 0, 10)
+      aman: parseInt(result.aman || 0, 10),
+      warning: parseInt(result.warning || 0, 10),
+      critical: parseInt(result.critical || 0, 10)
+    };
+  }
+
+  async getAlertSummary(uploadId, filters = {}) {
+    const { where, itemWhere } = this._buildWhereClause(uploadId, filters);
+
+    const result = await StockSnapshot.findOne({
+      where,
+      include: [{
+        model: MasterItem,
+        as: 'item',
+        where: Object.keys(itemWhere).length ? itemWhere : undefined,
+        attributes: []
+      }],
+      attributes: [
+        [fn('COUNT', literal('CASE WHEN days_stock < 15 THEN 1 END')), 'critical'],
+        [fn('COUNT', literal('CASE WHEN soh_qty < rop_qty THEN 1 END')), 'lowStock'],
+        [fn('COUNT', literal('CASE WHEN days_stock > 90 THEN 1 END')), 'overStock'],
+        [fn('COUNT', literal('CASE WHEN days_stock > 180 THEN 1 END')), 'deadStock'],
+        [fn('SUM', literal('CASE WHEN days_stock > 90 THEN (soh_amount + coh_amount) ELSE 0 END')), 'overStockValue'],
+        [fn('SUM', literal('CASE WHEN days_stock > 180 THEN (soh_amount + coh_amount) ELSE 0 END')), 'deadStockValue']
+      ],
+      raw: true
+    });
+
+    return {
+      critical: parseInt(result.critical || 0, 10),
+      lowStock: parseInt(result.lowStock || 0, 10),
+      overStock: parseInt(result.overStock || 0, 10),
+      deadStock: parseInt(result.deadStock || 0, 10),
+      overStockValue: parseFloat(result.overStockValue || 0),
+      deadStockValue: parseFloat(result.deadStockValue || 0)
+    };
+  }
+
+  async getAgingBuckets(uploadId, filters = {}) {
+    const { where, itemWhere } = this._buildWhereClause(uploadId, filters);
+
+    const result = await StockSnapshot.findOne({
+      where,
+      include: [{
+        model: MasterItem,
+        as: 'item',
+        where: Object.keys(itemWhere).length ? itemWhere : undefined,
+        attributes: []
+      }],
+      attributes: [
+        [fn('SUM', literal('CASE WHEN days_stock < 30 THEN (soh_amount + coh_amount) ELSE 0 END')), 'under30'],
+        [fn('SUM', literal('CASE WHEN days_stock >= 30 AND days_stock <= 90 THEN (soh_amount + coh_amount) ELSE 0 END')), 'range31to90'],
+        [fn('SUM', literal('CASE WHEN days_stock > 90 AND days_stock <= 180 THEN (soh_amount + coh_amount) ELSE 0 END')), 'range91to180'],
+        [fn('SUM', literal('CASE WHEN days_stock > 180 THEN (soh_amount + coh_amount) ELSE 0 END')), 'over180']
+      ],
+      raw: true
+    });
+
+    return {
+      under30: parseFloat(result.under30 || 0),
+      range31to90: parseFloat(result.range31to90 || 0),
+      range91to180: parseFloat(result.range91to180 || 0),
+      over180: parseFloat(result.over180 || 0)
     };
   }
 

@@ -23,6 +23,11 @@ class DashboardService {
     const uploadId = filters.upload_id ? parseInt(filters.upload_id, 10) : latestUpload.id;
 
     const summary = await stockSnapshotRepository.getSummary(uploadId, filters);
+    const usageSummary = await stockUsageRepository.getUsageSummary(uploadId, filters);
+    
+    // Merge usage into summary
+    summary.totalUsageQty = usageSummary.totalUsageQty;
+    summary.totalUsageValue = usageSummary.totalUsageValue;
 
     return {
       latestUpload: {
@@ -43,6 +48,8 @@ class DashboardService {
         stockClassDistribution: [],
         vendorConsignment: [],
         coverageDistribution: [],
+        agingBuckets: {},
+        alertSummary: {},
         trends: {
           inventoryValue: [],
           usage: []
@@ -83,13 +90,14 @@ class DashboardService {
     // 5. Coverage Distribution
     const rawCoverage = await stockSnapshotRepository.getCoverageBuckets(uploadId, filters);
     const coverageDistribution = [
-      { name: 'No Stock (0 days)', value: rawCoverage.zeroStock },
-      { name: 'Critical (< 15 days)', value: rawCoverage.under15 },
-      { name: 'Warning (15-30 days)', value: rawCoverage.range15to30 },
-      { name: 'Safe (30-60 days)', value: rawCoverage.range30to60 },
-      { name: 'Safe (60-90 days)', value: rawCoverage.range60to90 },
-      { name: 'Safe (> 90 days)', value: rawCoverage.over90 }
+      { name: '> 30 Hari (Aman)', value: rawCoverage.aman },
+      { name: '15 - 30 Hari (Warning)', value: rawCoverage.warning },
+      { name: '< 15 Hari (Critical)', value: rawCoverage.critical }
     ];
+
+    // 6. Aging Buckets & Alert Summary
+    const agingBuckets = await stockSnapshotRepository.getAgingBuckets(uploadId, filters);
+    const alertSummary = await stockSnapshotRepository.getAlertSummary(uploadId, filters);
 
     // 6. Top 10 Usage items
     const rawTopUsage = await stockUsageRepository.getTopUsageItems(uploadId, filters);
@@ -120,6 +128,8 @@ class DashboardService {
       stockClassDistribution,
       vendorConsignment,
       coverageDistribution,
+      agingBuckets,
+      alertSummary,
       topUsageItems,
       trends
     };
