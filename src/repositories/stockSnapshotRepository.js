@@ -1,6 +1,7 @@
 const { Op, fn, col, literal } = require('sequelize');
 const StockSnapshot = require('../models/stock_snapshot');
 const MasterItem = require('../models/master_item');
+const settingService = require('../services/settingService');
 
 class StockSnapshotRepository {
   async bulkCreate(snapshots, transaction) {
@@ -161,6 +162,7 @@ class StockSnapshotRepository {
 
   async getAlertSummary(uploadId, filters = {}) {
     const { where, itemWhere } = this._buildWhereClause(uploadId, filters);
+    const t = await settingService.getThresholds();
 
     const result = await StockSnapshot.findOne({
       where,
@@ -171,12 +173,12 @@ class StockSnapshotRepository {
         attributes: []
       }],
       attributes: [
-        [fn('COUNT', literal('CASE WHEN days_stock < 15 THEN 1 END')), 'critical'],
+        [fn('COUNT', literal(`CASE WHEN days_stock < ${t.CRITICAL_DAYS} THEN 1 END`)), 'critical'],
         [fn('COUNT', literal('CASE WHEN soh_qty < rop_qty THEN 1 END')), 'lowStock'],
-        [fn('COUNT', literal('CASE WHEN days_stock > 90 THEN 1 END')), 'overStock'],
-        [fn('COUNT', literal('CASE WHEN days_stock > 180 THEN 1 END')), 'deadStock'],
-        [fn('SUM', literal('CASE WHEN days_stock > 90 THEN (soh_amount + coh_amount) ELSE 0 END')), 'overStockValue'],
-        [fn('SUM', literal('CASE WHEN days_stock > 180 THEN (soh_amount + coh_amount) ELSE 0 END')), 'deadStockValue']
+        [fn('COUNT', literal(`CASE WHEN days_stock > ${t.OVERSTOCK_DAYS} THEN 1 END`)), 'overStock'],
+        [fn('COUNT', literal(`CASE WHEN days_stock > ${t.DEADSTOCK_DAYS} THEN 1 END`)), 'deadStock'],
+        [fn('SUM', literal(`CASE WHEN days_stock > ${t.OVERSTOCK_DAYS} THEN (soh_amount + coh_amount) ELSE 0 END`)), 'overStockValue'],
+        [fn('SUM', literal(`CASE WHEN days_stock > ${t.DEADSTOCK_DAYS} THEN (soh_amount + coh_amount) ELSE 0 END`)), 'deadStockValue']
       ],
       raw: true
     });
@@ -193,6 +195,7 @@ class StockSnapshotRepository {
 
   async getAgingBuckets(uploadId, filters = {}) {
     const { where, itemWhere } = this._buildWhereClause(uploadId, filters);
+    const t = await settingService.getThresholds();
 
     const result = await StockSnapshot.findOne({
       where,
@@ -204,9 +207,9 @@ class StockSnapshotRepository {
       }],
       attributes: [
         [fn('SUM', literal('CASE WHEN days_stock < 30 THEN (soh_amount + coh_amount) ELSE 0 END')), 'under30'],
-        [fn('SUM', literal('CASE WHEN days_stock >= 30 AND days_stock <= 90 THEN (soh_amount + coh_amount) ELSE 0 END')), 'range31to90'],
-        [fn('SUM', literal('CASE WHEN days_stock > 90 AND days_stock <= 180 THEN (soh_amount + coh_amount) ELSE 0 END')), 'range91to180'],
-        [fn('SUM', literal('CASE WHEN days_stock > 180 THEN (soh_amount + coh_amount) ELSE 0 END')), 'over180']
+        [fn('SUM', literal(`CASE WHEN days_stock >= 30 AND days_stock <= ${t.OVERSTOCK_DAYS} THEN (soh_amount + coh_amount) ELSE 0 END`)), 'range31to90'],
+        [fn('SUM', literal(`CASE WHEN days_stock > ${t.OVERSTOCK_DAYS} AND days_stock <= ${t.DEADSTOCK_DAYS} THEN (soh_amount + coh_amount) ELSE 0 END`)), 'range91to180'],
+        [fn('SUM', literal(`CASE WHEN days_stock > ${t.DEADSTOCK_DAYS} THEN (soh_amount + coh_amount) ELSE 0 END`)), 'over180']
       ],
       raw: true
     });

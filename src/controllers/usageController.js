@@ -1,6 +1,6 @@
-const monitoringService = require('../services/monitoringService');
+const usageService = require('../services/usageService');
 
-const getMonitoringList = async (req, res, next) => {
+const getUsageList = async (req, res, next) => {
   try {
     const query = {
       upload_id: req.query.upload_id,
@@ -12,13 +12,10 @@ const getMonitoringList = async (req, res, next) => {
       warehouse: req.query.warehouse,
       vendor: req.query.vendor,
       stock_type: req.query.stock_type,
-      stock_class: req.query.stock_class,
-      status: req.query.status,
-      alert_filter: req.query.alert_filter,
-      dead_stock_filter: req.query.dead_stock_filter
+      stock_class: req.query.stock_class
     };
     
-    const result = await monitoringService.getMonitoringList(query);
+    const result = await usageService.getUsageList(query);
     res.status(200).json({
       status: 'success',
       data: result
@@ -29,5 +26,5 @@ const getMonitoringList = async (req, res, next) => {
 };
 
 module.exports = {
-  getMonitoringList
+  getUsageList
 };

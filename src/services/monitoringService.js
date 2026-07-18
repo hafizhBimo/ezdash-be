@@ -1,7 +1,8 @@
-const { Op } = require('sequelize');
+const { Op, col } = require('sequelize');
 const StockSnapshot = require('../models/stock_snapshot');
 const MasterItem = require('../models/master_item');
 const uploadHistoryRepository = require('../repositories/uploadHistoryRepository');
+const settingService = require('../services/settingService');
 
 class MonitoringService {
   async getMonitoringList(query = {}) {
@@ -41,6 +42,34 @@ class MonitoringService {
     }
     if (query.status) {
       snapshotWhere.status = query.status;
+    }
+
+    const t = await settingService.getThresholds();
+
+    if (query.alert_filter) {
+      if (query.alert_filter === 'CRITICAL') {
+         snapshotWhere.days_stock = { [Op.lt]: t.CRITICAL_DAYS };
+      } else if (query.alert_filter === 'LOW_STOCK') {
+         snapshotWhere.soh_qty = { [Op.lt]: col('rop_qty') };
+      } else if (query.alert_filter === 'ALL_ALERTS') {
+         snapshotWhere[Op.or] = [
+            { days_stock: { [Op.lt]: t.CRITICAL_DAYS } },
+            { soh_qty: { [Op.lt]: col('rop_qty') } }
+         ];
+      }
+    }
+
+    if (query.dead_stock_filter) {
+      if (query.dead_stock_filter === 'OVERSTOCK') {
+         // > OVERSTOCK_DAYS but <= DEADSTOCK_DAYS
+         snapshotWhere.days_stock = { [Op.gt]: t.OVERSTOCK_DAYS, [Op.lte]: t.DEADSTOCK_DAYS };
+      } else if (query.dead_stock_filter === 'DEADSTOCK') {
+         // > DEADSTOCK_DAYS
+         snapshotWhere.days_stock = { [Op.gt]: t.DEADSTOCK_DAYS };
+      } else if (query.dead_stock_filter === 'ALL') {
+         // Any > OVERSTOCK_DAYS
+         snapshotWhere.days_stock = { [Op.gt]: t.OVERSTOCK_DAYS };
+      }
     }
 
     if (query.search) {
