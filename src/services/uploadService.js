@@ -97,8 +97,20 @@ class UploadService {
         vendor: masterHeaders.indexOf('VENDOR COGS')
       };
 
-      if (mIdx.code === -1 || mIdx.name === -1) {
-        throw new Error('DATA_MASTER sheet is missing required columns (Stockcode or Item Name)');
+      // Validasi kolom wajib DATA_MASTER
+      const requiredMasterColumns = {
+        code: 'Stockcode',
+        name: 'Item Name',
+        whs: 'Warehouse',
+        class: 'Stock Class',
+        price: 'Price',
+        type: 'Stock Type',
+        vendor: 'VENDOR COGS'
+      };
+      for (const [key, columnName] of Object.entries(requiredMasterColumns)) {
+        if (mIdx[key] === -1) {
+          throw new BadRequestError(`Sheet "DATA_MASTER + STOCK WHS" kehilangan kolom wajib: "${columnName}"`);
+        }
       }
 
       const masterItemsData = [];
@@ -159,6 +171,10 @@ class UploadService {
         soh: whsHeaders.indexOf('SOH')
       };
       
+      if (wIdx.code === -1 || wIdx.soh === -1) {
+        throw new BadRequestError('Sheet "STOCK-WHS" kehilangan kolom wajib: "Stockcode" atau "SOH"');
+      }
+      
       const sohMap = new Map(); // stock_code -> soh_qty
       for (let i = 1; i < whsRows.length; i++) {
         const row = whsRows[i];
@@ -179,6 +195,10 @@ class UploadService {
         code: cogsHeaders.indexOf('Stockcode'),
         coh: cogsHeaders.indexOf('COH')
       };
+
+      if (cIdx.code === -1 || cIdx.coh === -1) {
+        throw new BadRequestError('Sheet "STOCK-COGS" kehilangan kolom wajib: "Stockcode" atau "COH"');
+      }
 
       const cohMap = new Map(); // stock_code -> coh_qty
       for (let i = 1; i < cogsRows.length; i++) {
@@ -208,6 +228,23 @@ class UploadService {
         status: kalkHeaders.indexOf('Status'),
         alert: kalkHeaders.indexOf('Alert & Exception')
       };
+
+      const requiredKalkColumns = {
+        code: 'Stockcode',
+        min: 'MIN',
+        rop: 'ROP',
+        roq: 'ROQ',
+        totalStock: 'Total Stock',
+        avgUsage: 'AVG 6 Month',
+        daysStock: 'Days Of Stock',
+        status: 'Status',
+        alert: 'Alert & Exception'
+      };
+      for (const [key, columnName] of Object.entries(requiredKalkColumns)) {
+        if (kIdx[key] === -1) {
+          throw new BadRequestError(`Sheet "KALKULASI" kehilangan kolom wajib: "${columnName}"`);
+        }
+      }
 
       const kalkMap = new Map(); // stock_code -> kalkulasi object
       for (let i = 1; i < kalkRows.length; i++) {
@@ -293,6 +330,10 @@ class UploadService {
       const uIdx = {
         code: usageHeaders.indexOf('Stockcode')
       };
+
+      if (uIdx.code === -1) {
+        throw new BadRequestError('Sheet "USAGE" kehilangan kolom wajib: "Stockcode"');
+      }
 
       // Detect date columns
       const dateColumns = []; // Array of { index, formattedDate }
