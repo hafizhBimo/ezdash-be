@@ -8,7 +8,7 @@ const routes = require('./routes');
 const { NotFoundError } = require('./utils/appError');
 // IMPORTANT: must import models/index.js to register all associations
 require('./models/index');
-require('dotenv').config();
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 const app = express();
 
