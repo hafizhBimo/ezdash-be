@@ -70,7 +70,10 @@ class DashboardService {
     const rawStockType = await stockSnapshotRepository.getStockTypeDistribution(uploadId, filters);
     const stockTypeDistribution = rawStockType.map(r => ({
       name: r.stock_type || 'N/A',
-      value: parseInt(r.count, 10)
+      code: r.stock_type || 'N/A',
+      count: parseInt(r.count, 10),
+      qty: parseFloat(r.total_qty || 0),
+      value: parseFloat(r.total_qty || 0) // berdasarkan Qty
     }));
 
     // 3. Stock Class Distribution
@@ -90,9 +93,10 @@ class DashboardService {
     // 5. Coverage Distribution
     const rawCoverage = await stockSnapshotRepository.getCoverageBuckets(uploadId, filters);
     const coverageDistribution = [
-      { name: '> 30 Hari (Aman)', value: rawCoverage.aman },
-      { name: '15 - 30 Hari (Warning)', value: rawCoverage.warning },
-      { name: '< 15 Hari (Critical)', value: rawCoverage.critical }
+      { name: 'No Usage (0 Hari)', value: rawCoverage.no_usage, statusKey: 'NO_USAGE' },
+      { name: '<= 15 Hari (Critical)', value: rawCoverage.critical, statusKey: 'CRITICAL' },
+      { name: '15 - 30 Hari (Warning)', value: rawCoverage.warning, statusKey: 'WARNING' },
+      { name: '> 30 Hari (Stock Safe)', value: rawCoverage.aman, statusKey: 'SAFE' }
     ];
 
     // 6. Aging Buckets & Alert Summary
@@ -118,7 +122,8 @@ class DashboardService {
       })),
       usage: usageHistory.map(h => ({
         date: h.usage_date,
-        value: parseFloat(h.total_usage)
+        qty: parseFloat(h.total_usage || 0),
+        value: parseFloat(h.total_value || 0)
       }))
     };
 

@@ -30,7 +30,8 @@ class UsageService {
       const searchPattern = `%${query.search}%`;
       itemWhere[Op.or] = [
         { stock_code: { [Op.iLike]: searchPattern } },
-        { item_name: { [Op.iLike]: searchPattern } }
+        { item_name: { [Op.iLike]: searchPattern } },
+        { part_number: { [Op.iLike]: searchPattern } }
       ];
     }
 
@@ -38,8 +39,6 @@ class UsageService {
     if (sortBy === 'usage_qty') {
       order = [[sortBy, sortOrder]];
     } else if (sortBy === 'usage_amount') {
-      // Order by calculated amount (qty * price) is tricky without a literal, 
-      // but we can sort by raw qty * price
       order = [[MasterItem, 'price', sortOrder]]; // Simplified for now
     } else {
       order = [[{ model: MasterItem, as: 'item' }, sortBy, sortOrder]];
@@ -51,7 +50,7 @@ class UsageService {
         model: MasterItem,
         as: 'item',
         where: Object.keys(itemWhere).length ? itemWhere : undefined,
-        attributes: ['stock_code', 'item_name', 'warehouse', 'vendor', 'stock_type', 'stock_class', 'price']
+        attributes: ['stock_code', 'part_number', 'item_name', 'warehouse', 'vendor', 'stock_type', 'stock_class', 'price']
       }],
       order,
       limit,

@@ -45,15 +45,22 @@ class StockUsageRepository {
     });
   }
 
-  // Get historical monthly usage aggregates for a trend line chart
+  // Get historical monthly usage aggregates for a trend line chart (6 months)
   async getUsageHistory() {
     return await StockUsage.findAll({
+      include: [{
+        model: MasterItem,
+        as: 'item',
+        attributes: []
+      }],
       attributes: [
         'usage_date',
-        [fn('SUM', col('usage_qty')), 'total_usage']
+        [fn('SUM', col('usage_qty')), 'total_usage'],
+        [fn('SUM', literal('usage_qty * "item".price')), 'total_value']
       ],
       group: ['usage_date'],
       order: [['usage_date', 'ASC']],
+      limit: 6,
       raw: true
     });
   }

@@ -76,7 +76,8 @@ class StockSnapshotRepository {
       }],
       attributes: [
         [col('item.stock_type'), 'stock_type'],
-        [fn('COUNT', col('StockSnapshot.id')), 'count']
+        [fn('COUNT', col('StockSnapshot.id')), 'count'],
+        [fn('SUM', col('soh_qty')), 'total_qty']
       ],
       group: [col('item.stock_type')],
       raw: true
@@ -146,17 +147,19 @@ class StockSnapshotRepository {
         attributes: []
       }],
       attributes: [
-        [fn('COUNT', literal('CASE WHEN days_stock > 30 THEN 1 END')), 'aman'],
-        [fn('COUNT', literal('CASE WHEN days_stock >= 15 AND days_stock <= 30 THEN 1 END')), 'warning'],
-        [fn('COUNT', literal('CASE WHEN days_stock < 15 THEN 1 END')), 'critical']
+        [fn('COUNT', literal('CASE WHEN days_stock = 0 OR days_stock IS NULL THEN 1 END')), 'no_usage'],
+        [fn('COUNT', literal('CASE WHEN days_stock > 0 AND days_stock <= 15 THEN 1 END')), 'critical'],
+        [fn('COUNT', literal('CASE WHEN days_stock > 15 AND days_stock <= 30 THEN 1 END')), 'warning'],
+        [fn('COUNT', literal('CASE WHEN days_stock > 30 THEN 1 END')), 'aman']
       ],
       raw: true
     });
 
     return {
-      aman: parseInt(result.aman || 0, 10),
+      no_usage: parseInt(result.no_usage || 0, 10),
+      critical: parseInt(result.critical || 0, 10),
       warning: parseInt(result.warning || 0, 10),
-      critical: parseInt(result.critical || 0, 10)
+      aman: parseInt(result.aman || 0, 10)
     };
   }
 
