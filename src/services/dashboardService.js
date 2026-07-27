@@ -59,11 +59,11 @@ class DashboardService {
 
     const uploadId = filters.upload_id ? parseInt(filters.upload_id, 10) : latestUpload.id;
 
-    // 1. Stock Distribution (SOH vs COH)
+    // 1. Stock Distribution (SOH vs COH) - count SKU
     const summary = await stockSnapshotRepository.getSummary(uploadId, filters);
     const stockDistribution = [
-      { name: 'Stock Gudang (SOH)', value: summary.totalSOH },
-      { name: 'Stock Consignment (COH)', value: summary.totalCOH }
+      { name: 'Stock Gudang (SOH)', value: summary.sohSKU },
+      { name: 'Stock Consignment (COH)', value: summary.cohSKU }
     ];
 
     // 2. Stock Type Distribution
@@ -113,7 +113,7 @@ class DashboardService {
 
     // 7. Trend Lines (History)
     const valueHistory = await stockSnapshotRepository.getInventoryValueHistory();
-    const usageHistory = await stockUsageRepository.getUsageHistory();
+    const usageHistory = await stockUsageRepository.getUsageHistory(filters);
 
     const trends = {
       inventoryValue: valueHistory.map(h => ({

@@ -26,8 +26,8 @@ class UsageService {
     if (query.stock_type) itemWhere.stock_type = query.stock_type;
     if (query.stock_class) itemWhere.stock_class = query.stock_class;
 
-    if (query.search) {
-      const searchPattern = `%${query.search}%`;
+    if (query.search && query.search.trim()) {
+      const searchPattern = `%${query.search.trim()}%`;
       itemWhere[Op.or] = [
         { stock_code: { [Op.iLike]: searchPattern } },
         { item_name: { [Op.iLike]: searchPattern } },
@@ -39,27 +39,64 @@ class UsageService {
     if (sortBy === 'usage_qty') {
       order = [[sortBy, sortOrder]];
     } else if (sortBy === 'usage_amount') {
-      order = [[MasterItem, 'price', sortOrder]]; // Simplified for now
+      order = [[{ model: MasterItem, as: 'item' }, 'price', sortOrder]];
     } else {
       order = [[{ model: MasterItem, as: 'item' }, sortBy, sortOrder]];
     }
+
+    const hasItemFilter = Object.keys(itemWhere).length > 0 || Object.getOwnPropertySymbols(itemWhere).length > 0;
 
     const { rows, count } = await StockUsage.findAndCountAll({
       where: usageWhere,
       include: [{
         model: MasterItem,
         as: 'item',
-        where: Object.keys(itemWhere).length ? itemWhere : undefined,
+        where: hasItemFilter ? itemWhere : undefined,
+        required: hasItemFilter,
         attributes: ['stock_code', 'part_number', 'item_name', 'warehouse', 'vendor', 'stock_type', 'stock_class', 'price']
       }],
       order,
       limit,
-      offset
+      offset,
+      distinct: true
     });
 
-    // We can reuse the filter logic from monitoring if needed, but for simplicity we return empty
-    // Or we just get unique warehouses from the items
-    return { rows, count, page, limit, uniqueFilters: { warehouses: [], vendors: [], stockTypes: [], stockClasses: [] } };
+    const uniqueFilters = await this.getUniqueFilterOptions(uploadId);
+
+    return { rows, count, page, limit, uniqueFilters };
+  }
+
+  async getUniqueFilterOptions(uploadId) {
+    const usages = await StockUsage.findAll({
+      where: { upload_id: uploadId },
+      include: [{
+        model: MasterItem,
+        as: 'item',
+        attributes: ['warehouse', 'vendor', 'stock_type', 'stock_class']
+      }],
+      attributes: ['id']
+    });
+
+    const warehouses = new Set();
+    const vendors = new Set();
+    const stockTypes = new Set();
+    const stockClasses = new Set();
+
+    usages.forEach(u => {
+      if (u.item) {
+        if (u.item.warehouse) warehouses.add(u.item.warehouse);
+        if (u.item.vendor) vendors.add(u.item.vendor);
+        if (u.item.stock_type) stockTypes.add(u.item.stock_type);
+        if (u.item.stock_class) stockClasses.add(u.item.stock_class);
+      }
+    });
+
+    return {
+      warehouses: Array.from(warehouses).sort(),
+      vendors: Array.from(vendors).sort(),
+      stockTypes: Array.from(stockTypes).sort(),
+      stockClasses: Array.from(stockClasses).sort()
+    };
   }
 }
 

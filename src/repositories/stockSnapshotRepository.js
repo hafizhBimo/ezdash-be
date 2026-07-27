@@ -25,23 +25,39 @@ class StockSnapshotRepository {
     if (filters.stock_class) {
       itemWhere.stock_class = filters.stock_class;
     }
+    if (filters.search && filters.search.trim()) {
+      const searchPattern = `%${filters.search.trim()}%`;
+      itemWhere[Op.or] = [
+        { stock_code: { [Op.iLike]: searchPattern } },
+        { item_name: { [Op.iLike]: searchPattern } },
+        { part_number: { [Op.iLike]: searchPattern } }
+      ];
+    }
 
     return { where, itemWhere };
   }
 
+  _hasFilter(itemWhere) {
+    return Object.keys(itemWhere).length > 0 || Object.getOwnPropertySymbols(itemWhere).length > 0;
+  }
+
   async getSummary(uploadId, filters = {}) {
     const { where, itemWhere } = this._buildWhereClause(uploadId, filters);
+    const hasFilter = this._hasFilter(itemWhere);
 
     const result = await StockSnapshot.findOne({
       where,
       include: [{
         model: MasterItem,
         as: 'item',
-        where: Object.keys(itemWhere).length ? itemWhere : undefined,
+        where: hasFilter ? itemWhere : undefined,
+        required: hasFilter,
         attributes: []
       }],
       attributes: [
         [fn('COUNT', fn('DISTINCT', col('item_id'))), 'totalSKU'],
+        [fn('COUNT', literal('CASE WHEN soh_qty > 0 THEN 1 END')), 'sohSKU'],
+        [fn('COUNT', literal('CASE WHEN coh_qty > 0 THEN 1 END')), 'cohSKU'],
         [fn('SUM', col('soh_qty')), 'totalSOH'],
         [fn('SUM', col('coh_qty')), 'totalCOH'],
         [fn('SUM', col('soh_amount')), 'totalSOHAmount'],
@@ -53,25 +69,29 @@ class StockSnapshotRepository {
     });
 
     return {
-      totalSKU: parseInt(result.totalSKU || 0, 10),
-      totalSOH: parseFloat(result.totalSOH || 0),
-      totalCOH: parseFloat(result.totalCOH || 0),
-      totalSOHAmount: parseFloat(result.totalSOHAmount || 0),
-      totalCOHAmount: parseFloat(result.totalCOHAmount || 0),
-      totalValue: parseFloat(result.totalValue || 0),
-      avgDaysStock: parseFloat(result.avgDaysStock || 0)
+      totalSKU: parseInt(result?.totalSKU || 0, 10),
+      sohSKU: parseInt(result?.sohSKU || 0, 10),
+      cohSKU: parseInt(result?.cohSKU || 0, 10),
+      totalSOH: parseFloat(result?.totalSOH || 0),
+      totalCOH: parseFloat(result?.totalCOH || 0),
+      totalSOHAmount: parseFloat(result?.totalSOHAmount || 0),
+      totalCOHAmount: parseFloat(result?.totalCOHAmount || 0),
+      totalValue: parseFloat(result?.totalValue || 0),
+      avgDaysStock: parseFloat(result?.avgDaysStock || 0)
     };
   }
 
   async getStockTypeDistribution(uploadId, filters = {}) {
     const { where, itemWhere } = this._buildWhereClause(uploadId, filters);
+    const hasFilter = this._hasFilter(itemWhere);
 
     return await StockSnapshot.findAll({
       where,
       include: [{
         model: MasterItem,
         as: 'item',
-        where: Object.keys(itemWhere).length ? itemWhere : undefined,
+        where: hasFilter ? itemWhere : undefined,
+        required: hasFilter,
         attributes: []
       }],
       attributes: [
@@ -86,13 +106,15 @@ class StockSnapshotRepository {
 
   async getStockClassDistribution(uploadId, filters = {}) {
     const { where, itemWhere } = this._buildWhereClause(uploadId, filters);
+    const hasFilter = this._hasFilter(itemWhere);
 
     return await StockSnapshot.findAll({
       where,
       include: [{
         model: MasterItem,
         as: 'item',
-        where: Object.keys(itemWhere).length ? itemWhere : undefined,
+        where: hasFilter ? itemWhere : undefined,
+        required: hasFilter,
         attributes: []
       }],
       attributes: [
@@ -106,23 +128,22 @@ class StockSnapshotRepository {
 
   async getVendorConsignment(uploadId, filters = {}) {
     const { where, itemWhere } = this._buildWhereClause(uploadId, filters);
+    const hasFilter = this._hasFilter(itemWhere);
     
     // Vendor is in master_items. Filter for coh_qty > 0 to focus on consignment
-    const combinedItemWhere = {
-      ...itemWhere,
-      vendor: { [Op.ne]: null }
+    const snapshotWhere = {
+      ...where,
+      coh_qty: { [Op.gt]: 0 }
     };
 
     return await StockSnapshot.findAll({
-      where: {
-        ...where,
-        coh_qty: { [Op.gt]: 0 }
-      },
+      where: snapshotWhere,
       include: [{
         model: MasterItem,
         as: 'item',
-        where: combinedItemWhere,
-        attributes: []
+        where: hasFilter ? itemWhere : undefined,
+        required: hasFilter,
+        attributes: ['vendor']
       }],
       attributes: [
         [col('item.vendor'), 'vendor'],
@@ -137,34 +158,7 @@ class StockSnapshotRepository {
 
   async getCoverageBuckets(uploadId, filters = {}) {
     const { where, itemWhere } = this._buildWhereClause(uploadId, filters);
-
-    const result = await StockSnapshot.findOne({
-      where,
-      include: [{
-        model: MasterItem,
-        as: 'item',
-        where: Object.keys(itemWhere).length ? itemWhere : undefined,
-        attributes: []
-      }],
-      attributes: [
-        [fn('COUNT', literal('CASE WHEN days_stock = 0 OR days_stock IS NULL THEN 1 END')), 'no_usage'],
-        [fn('COUNT', literal('CASE WHEN days_stock > 0 AND days_stock <= 15 THEN 1 END')), 'critical'],
-        [fn('COUNT', literal('CASE WHEN days_stock > 15 AND days_stock <= 30 THEN 1 END')), 'warning'],
-        [fn('COUNT', literal('CASE WHEN days_stock > 30 THEN 1 END')), 'aman']
-      ],
-      raw: true
-    });
-
-    return {
-      no_usage: parseInt(result.no_usage || 0, 10),
-      critical: parseInt(result.critical || 0, 10),
-      warning: parseInt(result.warning || 0, 10),
-      aman: parseInt(result.aman || 0, 10)
-    };
-  }
-
-  async getAlertSummary(uploadId, filters = {}) {
-    const { where, itemWhere } = this._buildWhereClause(uploadId, filters);
+    const hasFilter = this._hasFilter(itemWhere);
     const t = await settingService.getThresholds();
 
     const result = await StockSnapshot.findOne({
@@ -172,32 +166,30 @@ class StockSnapshotRepository {
       include: [{
         model: MasterItem,
         as: 'item',
-        where: Object.keys(itemWhere).length ? itemWhere : undefined,
+        where: hasFilter ? itemWhere : undefined,
+        required: hasFilter,
         attributes: []
       }],
       attributes: [
-        [fn('COUNT', literal(`CASE WHEN days_stock < ${t.CRITICAL_DAYS} THEN 1 END`)), 'critical'],
-        [fn('COUNT', literal('CASE WHEN soh_qty < rop_qty THEN 1 END')), 'lowStock'],
-        [fn('COUNT', literal(`CASE WHEN days_stock > ${t.OVERSTOCK_DAYS} THEN 1 END`)), 'overStock'],
-        [fn('COUNT', literal(`CASE WHEN days_stock > ${t.DEADSTOCK_DAYS} THEN 1 END`)), 'deadStock'],
-        [fn('SUM', literal(`CASE WHEN days_stock > ${t.OVERSTOCK_DAYS} THEN (soh_amount + coh_amount) ELSE 0 END`)), 'overStockValue'],
-        [fn('SUM', literal(`CASE WHEN days_stock > ${t.DEADSTOCK_DAYS} THEN (soh_amount + coh_amount) ELSE 0 END`)), 'deadStockValue']
+        [fn('SUM', literal('CASE WHEN days_stock = 0 THEN 1 ELSE 0 END')), 'no_usage'],
+        [fn('SUM', literal(`CASE WHEN days_stock > 0 AND days_stock <= ${t.CRITICAL_DAYS} THEN 1 ELSE 0 END`)), 'critical'],
+        [fn('SUM', literal(`CASE WHEN days_stock > ${t.CRITICAL_DAYS} AND days_stock <= 30 THEN 1 ELSE 0 END`)), 'warning'],
+        [fn('SUM', literal('CASE WHEN days_stock > 30 THEN 1 ELSE 0 END')), 'aman']
       ],
       raw: true
     });
 
     return {
-      critical: parseInt(result.critical || 0, 10),
-      lowStock: parseInt(result.lowStock || 0, 10),
-      overStock: parseInt(result.overStock || 0, 10),
-      deadStock: parseInt(result.deadStock || 0, 10),
-      overStockValue: parseFloat(result.overStockValue || 0),
-      deadStockValue: parseFloat(result.deadStockValue || 0)
+      no_usage: parseInt(result?.no_usage || 0, 10),
+      critical: parseInt(result?.critical || 0, 10),
+      warning: parseInt(result?.warning || 0, 10),
+      aman: parseInt(result?.aman || 0, 10)
     };
   }
 
   async getAgingBuckets(uploadId, filters = {}) {
     const { where, itemWhere } = this._buildWhereClause(uploadId, filters);
+    const hasFilter = this._hasFilter(itemWhere);
     const t = await settingService.getThresholds();
 
     const result = await StockSnapshot.findOne({
@@ -205,7 +197,8 @@ class StockSnapshotRepository {
       include: [{
         model: MasterItem,
         as: 'item',
-        where: Object.keys(itemWhere).length ? itemWhere : undefined,
+        where: hasFilter ? itemWhere : undefined,
+        required: hasFilter,
         attributes: []
       }],
       attributes: [
@@ -218,14 +211,48 @@ class StockSnapshotRepository {
     });
 
     return {
-      under30: parseFloat(result.under30 || 0),
-      range31to90: parseFloat(result.range31to90 || 0),
-      range91to180: parseFloat(result.range91to180 || 0),
-      over180: parseFloat(result.over180 || 0)
+      under30: parseFloat(result?.under30 || 0),
+      range31to90: parseFloat(result?.range31to90 || 0),
+      range91to180: parseFloat(result?.range91to180 || 0),
+      over180: parseFloat(result?.over180 || 0)
     };
   }
 
-  // Get historical inventory values grouped by upload snapshot dates to show trend line chart
+  async getAlertSummary(uploadId, filters = {}) {
+    const { where, itemWhere } = this._buildWhereClause(uploadId, filters);
+    const hasFilter = this._hasFilter(itemWhere);
+    const t = await settingService.getThresholds();
+
+    const result = await StockSnapshot.findOne({
+      where,
+      include: [{
+        model: MasterItem,
+        as: 'item',
+        where: hasFilter ? itemWhere : undefined,
+        required: hasFilter,
+        attributes: []
+      }],
+      attributes: [
+        [fn('SUM', literal(`CASE WHEN days_stock > 0 AND days_stock < ${t.CRITICAL_DAYS} THEN 1 ELSE 0 END`)), 'critical'],
+        [fn('SUM', literal(`CASE WHEN soh_qty < rop_qty THEN 1 ELSE 0 END`)), 'lowStock'],
+        [fn('SUM', literal(`CASE WHEN days_stock > ${t.OVERSTOCK_DAYS} AND days_stock <= ${t.DEADSTOCK_DAYS} THEN 1 ELSE 0 END`)), 'overStock'],
+        [fn('SUM', literal(`CASE WHEN days_stock > ${t.DEADSTOCK_DAYS} THEN 1 ELSE 0 END`)), 'deadStock'],
+        [fn('SUM', literal(`CASE WHEN days_stock > ${t.OVERSTOCK_DAYS} AND days_stock <= ${t.DEADSTOCK_DAYS} THEN (soh_amount + coh_amount) ELSE 0 END`)), 'overStockValue'],
+        [fn('SUM', literal(`CASE WHEN days_stock > ${t.DEADSTOCK_DAYS} THEN (soh_amount + coh_amount) ELSE 0 END`)), 'deadStockValue']
+      ],
+      raw: true
+    });
+
+    return {
+      critical: parseInt(result?.critical || 0, 10),
+      lowStock: parseInt(result?.lowStock || 0, 10),
+      overStock: parseInt(result?.overStock || 0, 10),
+      deadStock: parseInt(result?.deadStock || 0, 10),
+      overStockValue: parseFloat(result?.overStockValue || 0),
+      deadStockValue: parseFloat(result?.deadStockValue || 0)
+    };
+  }
+
   async getInventoryValueHistory() {
     return await StockSnapshot.findAll({
       attributes: [

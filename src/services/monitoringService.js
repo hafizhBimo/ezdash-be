@@ -76,7 +76,8 @@ class MonitoringService {
       const searchPattern = `%${query.search}%`;
       itemWhere[Op.or] = [
         { stock_code: { [Op.iLike]: searchPattern } },
-        { item_name: { [Op.iLike]: searchPattern } }
+        { item_name: { [Op.iLike]: searchPattern } },
+        { part_number: { [Op.iLike]: searchPattern } }
       ];
     }
 
@@ -93,12 +94,15 @@ class MonitoringService {
       order = [['id', 'ASC']];
     }
 
+    const hasItemFilter = Object.keys(itemWhere).length > 0 || Object.getOwnPropertySymbols(itemWhere).length > 0;
+
     const { rows, count } = await StockSnapshot.findAndCountAll({
       where: snapshotWhere,
       include: [{
         model: MasterItem,
         as: 'item',
-        where: Object.keys(itemWhere).length ? itemWhere : undefined,
+        where: hasItemFilter ? itemWhere : undefined,
+        required: hasItemFilter,
         attributes: [
           'stock_code',
           'part_number',
@@ -113,7 +117,8 @@ class MonitoringService {
       }],
       order,
       limit,
-      offset
+      offset,
+      distinct: true
     });
 
     // Extract unique filter lists to populate dropdowns on the frontend!
